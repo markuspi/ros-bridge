@@ -42,6 +42,10 @@ class Lidar(Sensor):
                                     communication=communication,
                                     synchronous_mode=synchronous_mode,
                                     prefix='lidar/' + carla_actor.attributes.get('role_name'))
+        lidar_loc = self.carla_actor.get_location()
+        car_loc = self.parent.carla_actor.get_location()
+        self.z_offset = lidar_loc.z - car_loc.z
+            
 
     def get_ros_transform(self, transform=None):
         """
@@ -87,6 +91,16 @@ class Lidar(Sensor):
         lidar_data = -lidar_data
         # we also need to permute x and y
         lidar_data = lidar_data[..., [1, 0, 2]]
+
+        # simple ground plane removal
+        # lidar_data coordinates are relative to the sensor
+        # so `-self.z_offset` is (local) ground level
+        # we keep all points above ground level,
+        # as well as all points 0.2m below ground level
+        mask = (lidar_data[:, 2] > -self.z_offset) | (lidar_data[:, 2] < -self.z_offset - 0.2)
+        # apply mask
+        lidar_data = lidar_data[mask]
+
         point_cloud_msg = create_cloud_xyz32(header, lidar_data)
         self.publish_message(
             self.get_topic_prefix() + "/point_cloud", point_cloud_msg)
